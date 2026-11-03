@@ -51,6 +51,8 @@
   .logo { width: 40px; height: 44px; flex: none; }
   h1 { margin: 0; font: 600 34px/1 var(--display); }
   .chip { padding: 3px 12px; border: 2px solid rgba(35, 38, 77, .3); border-radius: 8px; color: var(--soft); font-size: 16px; white-space: nowrap; }
+  a.chip { border-color: var(--ink); color: var(--ink); font-weight: 600; text-decoration: none; }
+  a.chip:hover { background: var(--card); }
   .tabs { display: flex; margin-left: auto; border: var(--line); border-radius: 10px; overflow: hidden; }
   .tabs button { padding: 5px 20px; border: none; background: var(--card); font: 600 19px var(--display); }
   .tabs button + button { border-left: var(--line); }
@@ -152,6 +154,7 @@
   </svg>
   <h1>Взлом промпта</h1>
   <span class="chip" id="model"></span>
+  <a class="chip" href="/agent">День 47: ловушка для агента →</a>
   <nav class="tabs">
     <button data-view="chat" aria-current="true">Чат</button>
     <button data-view="board" aria-current="false">Итог</button>

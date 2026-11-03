@@ -1,4 +1,4 @@
-"""Взлом промпта: чат с ботом банка, атаки на него и итог «атака × промпт»."""
+"""Взлом промпта: чат с ботом банка, атаки на него и итог «атака × промпт». День 47 — app/agent.py, страница /agent."""
 import json
 import os
 import threading
@@ -10,13 +10,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from app import attacks, llm, prompts
+from app import agent, attacks, llm, prompts
 
 ROOT = Path(__file__).resolve().parent.parent
 BOARD_FILE = Path(os.getenv("DATA_DIR", ROOT / "data")) / "board.json"
 TRIES = 5  # попыток на клетку: ответ модели случаен, а атакующему хватит одной удачной
 
 app = FastAPI()
+app.include_router(agent.router)
 _running = threading.Event()
 
 

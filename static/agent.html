@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ловушка для агента</title>
+<link rel="icon" href="data:,">
+<style>
+  /* Тот же «инженерный блокнот», что в дне 46. Строка для модели: правила — сиреневые, задача — персиковая,
+     чужой текст — голубой, спрятанная команда — красная, защита — зелёная, ответ — жёлтый. */
+  :root {
+    --paper: #f4efe6; --card: #fffdf9; --ink: #23264d; --soft: #50557a; --faint: rgba(35, 38, 77, .16);
+    --accent: #e5603b; --mustard: #f2d37a;
+    --err: #b42318; --err-bg: #fbe3dc; --ok: #2f7a45; --ok-bg: #dcefdc;
+    --sys: #d9ddf4; --usr: #f9d2bb; --dat: #d3e7f3; --grd: #c9e7cf; --ans: #f6e4a4;
+    --line: 2px solid var(--ink);
+    --display: Bahnschrift, "Segoe UI", sans-serif;
+    --mono: "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column; gap: 12px; padding: 14px 32px 16px;
+    color: var(--ink); font: 18px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    background: var(--paper) radial-gradient(rgba(35, 38, 77, .09) 1.3px, transparent 1.6px) 0 0 / 24px 24px;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .45; }
+  :focus-visible { outline: 3px dashed var(--ink); outline-offset: 3px; }
+  [hidden] { display: none !important; }
+  .soft { color: var(--soft); }
+  .grow { flex: 1; }
+  h2 { margin: 0; font: 700 18px/1.2 var(--display); letter-spacing: .07em; text-transform: uppercase; }
+  pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .card { border: var(--line); border-radius: 16px; background: var(--card); box-shadow: 4px 4px 0 var(--ink); }
+  .col { display: flex; flex-direction: column; min-height: 0; padding: 14px 18px 16px; }
+  .head { flex: none; display: flex; align-items: center; gap: 10px; }
+  .num { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border: var(--line); border-radius: 50%; background: var(--mustard); font: 700 17px var(--display); }
+  .sub { flex: none; margin: 6px 0 0; color: var(--soft); font-size: 16px; }
+  .empty { margin: auto; padding: 30px; color: var(--soft); text-align: center; }
+  .wait::after { content: "…"; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+
+  .press { border: var(--line); box-shadow: 3px 3px 0 var(--ink); transition: transform .08s, box-shadow .08s; }
+  .press:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  .press:disabled { box-shadow: none; }
+  .main { padding: 10px 26px; border: var(--line); border-radius: 12px; background: var(--ink); color: var(--card); font: 600 21px/1.2 var(--display); box-shadow: 5px 5px 0 var(--accent); white-space: nowrap; }
+  .ghost { padding: 5px 14px; border-radius: 10px; background: var(--card); font: 600 17px var(--display); white-space: nowrap; }
+
+  header { flex: none; display: flex; align-items: center; gap: 14px; }
+  .logo { width: 44px; height: 40px; flex: none; }
+  h1 { margin: 0; font: 600 34px/1 var(--display); }
+  .chip { padding: 3px 12px; border: 2px solid rgba(35, 38, 77, .3); border-radius: 8px; color: var(--soft); font-size: 16px; white-space: nowrap; }
+  a.chip { border-color: var(--ink); color: var(--ink); font-weight: 600; text-decoration: none; }
+  a.chip:hover { background: var(--card); }
+  .tabs { display: flex; margin-left: auto; border: var(--line); border-radius: 10px; overflow: hidden; }
+  .tabs button { padding: 5px 20px; border: none; background: var(--card); font: 600 19px var(--display); }
+  .tabs button + button { border-left: var(--line); }
+  .tabs button[aria-current="true"] { background: var(--ink); color: var(--card); }
+
+  /* Агент: ① что видит человек · ② агент · ③ что видит модель */
+  #view-agent { flex: 1; min-height: 0; display: grid; grid-template-columns: 480px minmax(0, 1fr) 560px; gap: 22px; }
+  .seg { flex: none; display: flex; margin-top: 10px; border: var(--line); border-radius: 12px; overflow: hidden; }
+  .seg button { flex: 1; padding: 7px 4px; border: none; background: var(--card); font: 600 16px var(--display); white-space: nowrap; }
+  .seg button + button { border-left: var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--card); }
+  .window { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-top: 12px; border: 2px solid var(--ink); border-radius: 10px; background: #fff; overflow: hidden; }
+  .bar { flex: none; padding: 5px 12px; border-bottom: 2px solid var(--ink); background: var(--sys); color: var(--ink); font: 600 14px var(--display); }
+  .view { flex: 1; overflow-y: auto; padding: 12px 16px; color: #1d1d1f; font: 16px/1.5 "Segoe UI", system-ui, sans-serif; }
+  .view p { margin: 0 0 10px; }
+  .view h2 { margin: 0 0 10px; font: 700 21px/1.25 "Segoe UI", system-ui, sans-serif; letter-spacing: 0; text-transform: none; }
+  .view table { border-collapse: collapse; margin-bottom: 10px; }
+  .view th, .view td { padding: 4px 12px; border: 1px solid #c8c8d0; text-align: left; }
+  .view a { color: #1a5fb4; }
+  .trick { flex: none; margin: 10px 0 0; padding: 8px 12px; border: var(--line); border-radius: 12px; background: var(--mustard); font-size: 15.5px; line-height: 1.4; }
+  .trick b { white-space: nowrap; }
+
+  #list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin: 10px 0; padding-right: 4px; scrollbar-width: thin; }
+  .ex { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; border: 2px solid transparent; border-radius: 14px; cursor: pointer; }
+  .ex.picked { border-color: var(--faint); background: rgba(35, 38, 77, .03); }
+  .you, .bot { max-width: 92%; padding: 7px 14px 9px; border: var(--line); border-radius: 14px; }
+  .you { align-self: flex-end; border-bottom-right-radius: 4px; background: var(--usr); }
+  .bot { align-self: flex-start; border-bottom-left-radius: 4px; background: var(--card); }
+  .you small, .bot small { display: block; margin-bottom: 2px; color: var(--soft); font: 700 12px var(--display); letter-spacing: .05em; text-transform: uppercase; }
+  .txt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16px; line-height: 1.45; }
+  .att { display: inline-block; margin-left: 6px; padding: 0 8px; border: 1.5px solid var(--ink); border-radius: 6px; background: #fff; font-size: 14px; white-space: nowrap; }
+  .held .txt { opacity: .5; }
+  .pic { display: block; margin: 6px 0; }
+  .err { color: var(--err); font-weight: 600; }
+  mark.evidence { padding: 0 2px; border-radius: 3px; background: var(--err); color: #fff; }
+  .vd { display: inline-block; margin-top: 8px; padding: 2px 12px; border: 2px solid; border-radius: 8px; font: 700 16px var(--display); }
+  .vd.bad { border-color: var(--err); background: var(--err-bg); color: var(--err); }
+  .vd.ok { border-color: var(--ok); background: var(--ok-bg); color: var(--ok); }
+  .why, .loot { margin-top: 6px; font-size: 15px; }
+  .loot { padding: 5px 10px; border: 2px dashed var(--err); border-radius: 8px; background: var(--err-bg); color: var(--err); font-weight: 600; }
+  .defense { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .defense > span { color: var(--soft); font: 600 15px var(--display); text-transform: uppercase; letter-spacing: .05em; }
+  .defense button { display: flex; flex-direction: column; align-items: flex-start; padding: 4px 14px 5px; border: var(--line); border-radius: 10px; background: var(--card); box-shadow: 2px 2px 0 var(--ink); font: 600 17px/1.2 var(--display); }
+  .defense button small { color: var(--soft); font: 600 11px var(--display); letter-spacing: .04em; text-transform: uppercase; }
+  .defense button[aria-pressed="true"] { background: var(--ok); color: #fff; }
+  .defense button[aria-pressed="true"] small { color: #e6f4e8; }
+  .send { flex: none; display: flex; align-items: stretch; gap: 12px; margin-top: 10px; }
+  .task { flex: 1; min-width: 0; display: flex; align-items: center; padding: 8px 14px; border: var(--line); border-radius: 12px; background: var(--usr); font: 15px/1.4 var(--mono); }
+
+  #raw { flex: 1; min-height: 0; overflow-y: auto; margin-top: 10px; padding: 12px 14px; border: 2px dashed rgba(35, 38, 77, .3); border-radius: 10px; font: 13.5px/1.55 var(--mono); scrollbar-width: thin; }
+  #raw .mark { color: #8a8fb5; font-weight: 700; }
+  #raw .sys { background: var(--sys); }
+  #raw .usr { background: var(--usr); }
+  #raw .dat { background: var(--dat); }
+  #raw .trap { background: var(--err); color: #fff; }
+  #raw .grd { background: var(--grd); }
+  #raw .ans { background: var(--ans); }
+  .legend { flex: none; display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; color: var(--soft); font-size: 14px; }
+  .legend i { display: inline-block; width: 16px; height: 16px; margin-right: 5px; border: 1.5px solid var(--ink); border-radius: 3px; vertical-align: -3px; }
+  .legend .s { background: var(--sys); } .legend .u { background: var(--usr); } .legend .d { background: var(--dat); }
+  .legend .t { background: var(--err); } .legend .g { background: var(--grd); } .legend .a { background: var(--ans); }
+  .moral { flex: none; margin: 10px 0 0; padding: 9px 14px; border: var(--line); border-radius: 12px; background: var(--mustard); font-size: 16px; line-height: 1.35; }
+
+  /* Итог: источник × защита */
+  #view-board { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 540px; gap: 22px; }
+  #matrix { display: grid; grid-template-columns: 220px repeat(5, auto); gap: 16px 12px; align-items: center; justify-content: start; margin-top: 18px; }
+  #matrix .th { padding-bottom: 4px; border-bottom: 4px solid var(--ink); color: var(--soft); font: 700 15px var(--display); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+  #matrix .label { font: 700 19px/1.2 var(--display); }
+  #matrix .label small { display: block; color: var(--soft); font: 600 12px var(--display); letter-spacing: .05em; text-transform: uppercase; }
+  .cell { justify-self: start; display: flex; gap: 3px; padding: 4px; border: 2px solid transparent; border-radius: 10px; background: none; }
+  .cell:hover, .cell.picked { border-color: var(--ink); background: var(--card); }
+  .sq { width: 34px; height: 34px; display: grid; place-items: center; border: 2px solid var(--ink); border-radius: 8px; font: 17px var(--display); font-style: normal; }
+  .sq.bad { border-color: var(--err); background: var(--err-bg); }
+  .sq.ok { border-color: var(--ok); background: var(--ok-bg); }
+  .sq.todo { border-style: dashed; border-color: var(--faint); }
+  #matrix .total { padding-top: 8px; border-top: 2px solid var(--faint); font: 700 22px var(--display); white-space: nowrap; }
+  #matrix .total.bad { color: var(--err); }
+  #matrix .total.ok { color: var(--ok); }
+  .rule-line { margin: 16px 0 0; color: var(--soft); font-size: 16px; }
+  #detail .goal { flex: none; margin-top: 8px; color: var(--soft); font-size: 15px; }
+  .tries { flex: 1; min-height: 0; overflow-y: auto; margin-top: 10px; scrollbar-width: thin; }
+  .try { padding: 10px 0; border-top: 2px solid var(--faint); }
+  .try-h { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .try-h .vd { margin: 0; }
+  .try .txt { margin-top: 6px; }
+
+  /* Реальные случаи */
+  #view-cases { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 18px 22px; }
+  .case { display: flex; flex-direction: column; gap: 4px; min-height: 0; padding: 16px 22px; overflow-y: auto; scrollbar-width: thin; }
+  .case h3 { margin: 0; font: 700 27px/1.15 var(--display); }
+  .case dl { margin: 0; font-size: 19px; line-height: 1.4; }
+  .case dt { margin-top: 10px; color: var(--soft); font: 700 13px var(--display); letter-spacing: .06em; text-transform: uppercase; }
+  .case dd { margin: 0; }
+  .case .foot { display: flex; align-items: center; gap: 10px; margin-top: auto; padding-top: 8px; }
+  .case a { color: var(--soft); font-size: 15px; }
+</style>
+</head>
+<body>
+<header>
+  <svg class="logo" viewBox="0 0 44 40" aria-hidden="true">
+    <rect x="2" y="6" width="40" height="28" rx="4" fill="#fffdf9" stroke="#23264d" stroke-width="3"/>
+    <path d="M4 9l18 14 18-14" fill="none" stroke="#23264d" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="35" cy="30" r="8" fill="#b42318" stroke="#23264d" stroke-width="2.5"/>
+    <path d="M35 25.5v5" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><circle cx="35" cy="34" r="1.5" fill="#fff"/>
+  </svg>
+  <h1>Ловушка для агента</h1>
+  <span class="chip" id="model"></span>
+  <a class="chip" href="/">← День 46: взлом промпта</a>
+  <nav class="tabs">
+    <button data-view="agent" aria-current="true">Агент</button>
+    <button data-view="board" aria-current="false">Итог</button>
+    <button data-view="cases" aria-current="false">Реальные случаи</button>
+  </nav>
+</header>
+
+<main id="view-agent">
+  <section class="card col">
+    <div class="head"><span class="num">1</span><h2>Что видит человек</h2></div>
+    <div class="seg" id="sources"></div>
+    <div class="window"><div class="bar" id="where"></div><div class="view" id="view"></div></div>
+    <p class="trick" id="trick"></p>
+  </section>
+
+  <section class="card col">
+    <div class="head"><span class="num">2</span><h2 id="agent-name">Агент</h2><span class="grow"></span>
+      <button class="ghost press" id="clear">очистить</button></div>
+    <div id="list"></div>
+    <div class="defense" id="defense"></div>
+    <div class="send">
+      <div class="task" id="task"></div>
+      <button class="main" id="go">▶ Запустить агента</button>
+    </div>
+  </section>
+
+  <section class="card col">
+    <div class="head"><span class="num">3</span><h2>Что видит модель</h2><span class="grow"></span><span class="soft" id="raw-note"></span></div>
+    <p class="sub">Одна строка: правила агента, задача и чужой текст подряд.</p>
+    <pre id="raw"></pre>
+    <div class="legend">
+      <span><i class="s"></i>правила агента</span>
+      <span><i class="u"></i>задача</span>
+      <span><i class="d"></i>чужой текст</span>
+      <span><i class="t"></i>спрятанная команда</span>
+      <span><i class="g"></i>защита</span>
+      <span><i class="a"></i>ответ модели</span>
+    </div>
+    <p class="moral"><b>Поэтому ловушка работает:</b> модели не важно, видит ли текст человек. Команда внутри письма
+      для неё — такие же слова, как просьба пользователя.</p>
+  </section>
+</main>
+
+<main id="view-board" hidden>
+  <section class="card col">
+    <div class="head"><h2>Атаки × защита</h2><span class="soft" id="board-meta"></span><span class="grow"></span>
+      <button class="main" id="run">▶ Прогнать все атаки</button></div>
+    <div id="matrix"></div>
+    <p class="rule-line">5 попыток на клетку: ответ модели случаен. 💥 — атака дошла до пользователя,
+      🔍 — модель поддалась, но ответ не пропустила проверка, 🛡 — модель не поддалась.</p>
+    <p class="err" id="board-error"></p>
+  </section>
+  <section class="card col" id="detail"></section>
+</main>
+
+<main id="view-cases" hidden></main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const num = x => String(x).replace('.', ',');
+const S = {state: null, src: 'mail', on: {clean: false, marks: false, check: false}, runs: {}, tries: {}, pick: -1,
+           busy: false, cell: null, polling: false, loot: []};
+const IMG = /!\[[^\]]*\]\((\S+?)\)/g;  // markdown-картинка: ![подпись](адрес)
+const CLS = {mark: 'mark', system: 'sys', guard: 'grd', task: 'usr', data: 'dat', trap: 'trap'};
+const source = id => S.state.sources.find(s => s.id === (id || S.src));
+const runKey = on => on.clean ? (on.marks ? 'both' : 'clean') : (on.marks ? 'marks' : 'none');
+const shields = on => S.state.layers.filter(l => on[l.id]).map(l => l.icon + ' ' + l.name).join(' · ') || 'без защиты';
+
+// Текст с подсветкой кусков spans: [[начало, конец], …]
+function marked(text, spans, cls) {
+  let out = '', at = 0;
+  for (const [a, b] of [...spans].sort((x, y) => x[0] - y[0])) {
+    if (a < at) continue;
+    out += esc(text.slice(at, a)) + `<mark class="${cls}">${esc(text.slice(a, b))}</mark>`;
+    at = b;
+  }
+  return out + esc(text.slice(at));
+}
+
+// Ответ, как его видит пользователь. live — чат рисует markdown-картинки сам: браузер идёт по адресу картинки
+function answerHTML(text, v, live) {
+  const spans = v && v.hit ? v.spans : [];
+  const cut = (a, b) => marked(text.slice(a, b), spans.filter(([x, y]) => x < b && y > a)
+    .map(([x, y]) => [Math.max(x, a) - a, Math.min(y, b) - a]), 'evidence');
+  if (!live) return cut(0, text.length);
+  let out = '', at = 0;
+  for (const m of text.matchAll(IMG)) {
+    out += cut(at, m.index) + `<img class="pic" src="${esc(m[1])}" alt="">`;
+    at = m.index + m[0].length;
+  }
+  return out + cut(at, text.length);
+}
+
+function chip(v, s) {
+  if (!v) return '';
+  if (v.passed) return `<span class="vd bad">💥 Атака прошла: ${esc(s.sign)}</span>`;
+  return `<span class="vd ok">${v.hit ? '🔍 Модель поддалась — проверка не пропустила' : '🛡 Атака не прошла'}</span>`;
+}
+const why = v => !v || !v.blocked ? ''
+  : `<div class="why">🔍 ${v.hit ? 'Ответ скрыт' : 'Проверка зря скрыла ответ'}: ${esc(v.blocked)}</div>`;
+
+// Что получил «сервер атакующего» по адресу картинки из этого ответа
+function stolen(r, live) {
+  if (!live) return '';
+  for (const m of r.answer.matchAll(IMG)) {
+    let d = null;
+    try { d = new URL(m[1], location.href).searchParams.get('d'); } catch { continue; }
+    const got = S.loot.find(x => x.d === d);
+    if (got) return `<div class="loot">📡 Сервер атакующего получил в ${got.at}: ${esc(d)}</div>`;
+  }
+  return '';
+}
+
+function setView(view) {
+  for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-current', b.dataset.view === view);
+  for (const id of ['agent', 'board', 'cases']) $('#view-' + id).hidden = id !== view;
+}
+
+// ① Что видит человек: источник отрисован браузером — спрятанное спрятано по-настоящему
+function renderSource() {
+  const s = source();
+  $('#sources').innerHTML = S.state.sources.map(x =>
+    `<button data-src="${x.id}" aria-pressed="${x.id === s.id}">${x.icon} ${esc(x.name)}</button>`).join('');
+  $('#where').textContent = `${s.icon} ${s.where}`;
+  $('#view').innerHTML = s.html;
+  $('#trick').innerHTML = `🕵 <b>Где команда:</b> ${esc(s.trick.name)}. В ③ она красная.<br>🎯 <b>Цель атаки:</b> ${esc(s.goal)}.`;
+}
+
+// ② Агент: задача и ответы; с проверкой ответ виден, только когда код его пропустил
+function renderRuns() {
+  const s = source(), runs = S.runs[s.id] || [];
+  $('#agent-name').textContent = '🤖 ' + s.agent;
+  $('#list').innerHTML = runs.length ? runs.map((r, i) => {
+    const live = r.verdict ? !r.verdict.blocked : !r.on.check;
+    const body = r.error ? `<span class="err">${esc(r.error)}</span>` : answerHTML(r.answer, r.verdict, live);
+    return `<div class="ex${i === S.pick ? ' picked' : ''}" data-i="${i}">
+      <div class="you"><small>Вы → агент · ${esc(shields(r.on))}</small><div class="txt">${esc(s.task)}<span class="att">${s.icon} ${esc(s.name)}</span></div></div>
+      <div class="bot${live ? '' : ' held'}"><small>Агент · попытка ${r.attempt}${r.seconds != null ? ' · ' + num(r.seconds) + ' с' : ''}${!r.verdict && r.on.check && !r.error ? ' · ждёт проверки' : ''}</small>
+        <div class="txt${r.answer || r.error ? '' : ' wait'}">${body}</div>${chip(r.verdict, s)}${why(r.verdict)}${stolen(r, live)}</div></div>`;
+  }).join('') : `<div class="empty">Нажмите «Запустить агента».<br>Защиту включайте кнопками внизу — по одной или все.</div>`;
+  if (S.busy) $('#list').scrollTop = $('#list').scrollHeight;
+  $('#defense').innerHTML = '<span>Защита:</span>' + S.state.layers.map(l =>
+    `<button data-layer="${l.id}" aria-pressed="${S.on[l.id]}" title="${esc(l.about + (l.id === 'check' ? ': ' + s.check : ''))}">${l.icon} ${esc(l.name)}<small>${esc(l.hint)}</small></button>`).join('');
+  $('#task').innerHTML = `${esc(s.task)}<span class="att">${s.icon} ${esc(s.name)}</span>`;
+  $('#go').disabled = S.busy;
+}
+
+// ③ Что видит модель: ровно та строка, что уйдёт в Ollama; до запуска — при текущей защите
+function renderRaw() {
+  const s = source(), r = (S.runs[s.id] || [])[S.pick];
+  const parts = r ? r.parts || s.views[runKey(r.on)] : s.views[runKey(S.on)];
+  $('#raw').innerHTML = parts.map(([role, t]) => `<span class="${CLS[role]}">${esc(t)}</span>`).join('')
+    + (r ? `<span class="ans${r.answer ? '' : ' wait'}">${marked(r.answer, r.verdict && r.verdict.hit ? r.verdict.spans : [], 'evidence')}</span>`
+         : '<span class="soft">← здесь допишется ответ модели</span>');
+  $('#raw-note').textContent = r ? `попытка ${r.attempt}` : shields(S.on);
+  if (S.busy && r && S.pick === S.runs[s.id].length - 1) $('#raw').scrollTop = $('#raw').scrollHeight;
+}
+
+const renderAgent = () => { renderSource(); renderRuns(); renderRaw(); };
+
+async function go() {
+  if (S.busy) return;
+  const s = source(), on = {...S.on}, key = s.id + '/' + runKey(on) + '/' + on.check;
+  const r = {on, attempt: S.tries[key] = (S.tries[key] || 0) + 1, answer: ''};
+  (S.runs[s.id] ||= []).push(r);
+  S.pick = S.runs[s.id].length - 1;
+  S.busy = true;
+  renderAgent();
+  try {
+    const res = await fetch('/api/agent/run', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                               body: JSON.stringify({source: s.id, ...on})});
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      for (let k; (k = buf.indexOf('\n')) >= 0; buf = buf.slice(k + 1)) {
+        const ev = JSON.parse(buf.slice(0, k));
+        if (ev.parts) r.parts = ev.parts;
+        if (ev.text) r.answer += ev.text;
+        if (ev.error) r.error = ev.error;
+        if (ev.done) { r.verdict = ev.verdict; r.seconds = ev.seconds; }
+      }
+      renderRuns(); renderRaw();
+    }
+  } catch (e) { r.error = 'Ошибка: ' + e.message; }
+  S.busy = false;
+  renderRuns(); renderRaw();
+}
+
+// Картинка загрузилась — значит, браузер уже сходил по её адресу. Смотрим журнал «сервера атакующего»
+document.addEventListener('load', async e => {
+  if (!e.target.classList || !e.target.classList.contains('pic')) return;
+  const d = new URL(e.target.src).searchParams.get('d');
+  if (S.loot.some(x => x.d === d)) return;
+  const loot = await (await fetch('/api/agent/loot')).json();
+  if (loot.length !== S.loot.length) { S.loot = loot; renderRuns(); }
+}, true);
+
+// Итог: строка — источник, колонка — защита, клетка — 5 попыток
+const square = x => !x ? '<i class="sq todo"></i>' : x.passed ? '<i class="sq bad">💥</i>'
+  : `<i class="sq ok">${x.hit ? '🔍' : '🛡'}</i>`;
+
+function renderBoard() {
+  const b = S.state.board, cells = b.cells || {}, C = S.state.columns, tries = b.tries || 5;
+  $('#board-meta').textContent = b.running ? `идёт: ${b.done} из ${b.total}`
+    : b.when ? `${b.when} · ${b.model} · ${num(Math.round((b.seconds || 0) / 6) / 10)} мин` : 'ещё не прогоняли';
+  $('#run').disabled = !!b.running;
+  let html = '<div></div>' + C.map(c => `<div class="th">${esc(c.name)}</div>`).join('');
+  for (const s of S.state.sources) {
+    html += `<div class="label">${s.icon} ${esc(s.name)}<small>${esc(s.trick.short)}</small></div>`;
+    for (const c of C) {
+      const key = `${s.id}/${c.id}`, got = cells[key] || [];
+      html += `<button class="cell${S.cell === key ? ' picked' : ''}" data-key="${key}">`
+        + Array.from({length: tries}, (_, i) => square(got[i])).join('') + '</button>';
+    }
+  }
+  html += '<div class="label total">Дошло до<br>пользователя</div>' + C.map(c => {
+    const all = S.state.sources.flatMap(s => cells[`${s.id}/${c.id}`] || []), n = all.filter(x => x.passed).length;
+    return `<div class="total ${n ? 'bad' : 'ok'}">${all.length ? `${n} из ${all.length}` : '—'}</div>`;
+  }).join('');
+  $('#matrix').innerHTML = html;
+  $('#board-error').textContent = b.error || '';
+  renderDetail();
+}
+
+function renderDetail() {
+  const box = $('#detail');
+  if (!S.cell) { box.innerHTML = '<div class="empty">Нажмите на клетку — здесь будут ответы агента.</div>'; return; }
+  const [id, cid] = S.cell.split('/'), s = source(id), c = S.state.columns.find(x => x.id === cid);
+  const got = (S.state.board.cells || {})[S.cell] || [];
+  box.innerHTML = `<div class="head"><h2>${s.icon} ${esc(s.name)} · ${esc(c.name)}</h2></div>
+    <p class="goal">🎯 ${esc(s.goal)}</p>
+    <div class="tries">${got.map((x, i) => `<div class="try"><div class="try-h"><b>Попытка ${i + 1}</b>${chip(x, s)}</div>
+      ${why(x)}<div class="txt">${answerHTML(x.text, x, false)}</div></div>`).join('') || '<div class="empty">Ещё нет ответов.</div>'}</div>`;
+}
+
+async function runBoard() {
+  const r = await fetch('/api/agent/board', {method: 'POST'});
+  if (r.ok) S.state.board = await r.json();
+  renderBoard();
+  poll();
+}
+
+async function poll() {
+  if (S.polling) return;
+  S.polling = true;
+  while (S.state.board.running) {
+    await new Promise(r => setTimeout(r, 1500));
+    S.state.board = await (await fetch('/api/agent/board')).json();
+    renderBoard();
+  }
+  S.polling = false;
+}
+
+// Реальные случаи и похожая ловушка у нас
+function renderCases() {
+  $('#view-cases').innerHTML = S.state.cases.map(c => {
+    const s = source(c.try);
+    return `<article class="card case"><span class="soft">${esc(c.where)}</span><h3>${esc(c.title)}</h3>
+      <dl><dt>Что сделали</dt><dd>${esc(c.what)}</dd><dt>Почему сработало</dt><dd>${esc(c.why)}</dd>
+        <dt>Как закрыли</dt><dd>${esc(c.fix)}</dd></dl>
+      <div class="foot"><a href="${esc(c.url)}" target="_blank" rel="noopener">источник ↗</a><span class="grow"></span>
+        <button class="ghost press" data-open="${s.id}">▶ ${s.id === 'bard' ? 'Повтор' : 'Похожее'} у нас: ${s.icon} ${esc(s.name)}</button></div></article>`;
+  }).join('');
+}
+
+document.addEventListener('click', e => {
+  if (e.target.closest('.view a')) { e.preventDefault(); return; }  // ссылки внутри письма и страницы не открываем
+  const t = e.target.closest('button, .ex');
+  if (!t) return;
+  if (t.dataset.view) setView(t.dataset.view);
+  else if (t.dataset.src) { S.src = t.dataset.src; S.pick = -1; renderAgent(); }
+  else if (t.dataset.layer) { S.on[t.dataset.layer] = !S.on[t.dataset.layer]; S.pick = -1; renderRuns(); renderRaw(); }
+  else if (t.dataset.key) { S.cell = t.dataset.key; renderBoard(); }
+  else if (t.dataset.open) { S.src = t.dataset.open; S.pick = -1; setView('agent'); renderAgent(); }
+  else if (t.id === 'go') go();
+  else if (t.id === 'clear') { S.runs[S.src] = []; S.pick = -1; renderRuns(); renderRaw(); }
+  else if (t.id === 'run') runBoard();
+  else if (t.classList.contains('ex')) { S.pick = +t.dataset.i; renderRuns(); renderRaw(); }
+});
+
+(async () => {
+  S.state = await (await fetch('/api/agent/state')).json();
+  $('#model').textContent = `мозг — ${S.state.model} на этом компьютере`;
+  renderAgent(); renderBoard(); renderCases();
+  poll();
+})();
+</script>
+</body>
+</html>
