@@ -25,7 +25,8 @@ UPSTREAM_KEY = os.getenv("UPSTREAM_KEY", "")  # ключ облака знает
 EXTRA = {} if UPSTREAM_KEY else {"reasoning_effort": "none"}  # своя Ollama: qwen отвечает без размышлений
 MODE = os.getenv("GUARD_MODE", "block")  # нашли секрет: block — не пускать, mask — замаскировать и пропустить
 RATE_LIMIT = int(os.getenv("RATE_LIMIT", "10"))  # запросов в минуту с одного IP
-MAX_TOKENS = 300  # потолок длины ответа: бережёт и время, и деньги
+DEFAULT_TOKENS = 300  # длина ответа, если клиент не просил другой: бережёт и время, и деньги
+MAX_TOKENS = 1000  # потолок: длиннее не дадим, сколько ни проси. Код длиннее ответа в чате
 # Модель своя и бесплатна; считаем, сколько стоило бы в облаке: Qwen3.5-Flash, $ за 1 млн токенов
 PRICE_IN, PRICE_OUT = float(os.getenv("PRICE_IN", "0.1")), float(os.getenv("PRICE_OUT", "0.4"))
 
@@ -109,14 +110,14 @@ def call_model(messages, options):
     return choice["message"].get("content") or "", choice.get("finish_reason", "stop"), data.get("usage") or {}
 
 
-def process(chat, ip, mode):
+def process(chat, ip, mode, who="client"):
     """Путь запроса: лимит → Input Guard → модель → Output Guard → журнал.
 
     Отдаёт этапы по мере готовности — их показывает страница. Последний этап — то, что получает клиент.
     """
     free, left, wait = _take(ip)
     headers = {"X-RateLimit-Limit": str(RATE_LIMIT), "X-RateLimit-Remaining": str(left)}
-    row = {"ip": ip, "mode": mode}
+    row = {"ip": ip, "who": who, "mode": mode}
     if not free:
         _audit(**row, action="limited", status=429)
         yield {"step": "done", "status": 429, "headers": headers | {"Retry-After": str(wait)},
@@ -150,7 +151,7 @@ def process(chat, ip, mode):
     start = time.time()
     options = chat.model_dump(include={"temperature", "top_p"}, exclude_none=True)
     try:
-        answer, finish, usage = call_model(sent, options | {"max_tokens": min(chat.max_tokens or MAX_TOKENS, MAX_TOKENS)})
+        answer, finish, usage = call_model(sent, options | {"max_tokens": min(chat.max_tokens or DEFAULT_TOKENS, MAX_TOKENS)})
     except Exception as e:  # noqa: BLE001 — клиент должен узнать, что модель не ответила; секрета в тексте ошибки нет
         message = f"Модель не ответила: {e}"
         _audit(**row, status=502, error=message)

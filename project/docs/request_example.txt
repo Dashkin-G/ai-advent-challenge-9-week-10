@@ -1,0 +1,3 @@
+POST /v1/login
+Authorization: Bearer tok_8f3a9c21d7e4
+{"email": "anna.smirnova@romashka.example", "phone": "+7 999 123-45-67", "passport": "0000 123456", "password": "Qwerty123!"}

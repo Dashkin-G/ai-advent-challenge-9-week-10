@@ -140,6 +140,7 @@
   <h1>LLM-шлюз</h1>
   <span class="chip" id="model"></span>
   <a class="chip" href="/agent">← День 47: ловушка для агента</a>
+  <a class="chip" href="/loop">День 49: security step →</a>
   <nav class="tabs">
     <button data-view="flow" aria-current="true">Шлюз</button>
     <button data-view="tests" aria-current="false">Тесты</button>
@@ -358,7 +359,7 @@ function renderRows() {
     const full = [r.request && 'Запрос: ' + r.request, r.answer && 'Ответ: ' + r.answer, r.error,
                   r.cost != null && `Токены: ${r.tokens_in} + ${r.tokens_out} · ${num(r.seconds)} с`].filter(Boolean).join('\n');
     return `<details class="${cls === 'bad' ? 'bad' : ''}"><summary><div class="row1"><time>${esc(r.at.slice(11))}</time>
-      <b>${icon} ${label}</b><span class="price">${r.cost != null ? usd(r.cost) : '$0'}</span></div>${tags}</summary>
+      <b>${icon} ${label}</b>${r.who && r.who !== 'client' ? `<span class="soft">цикл · ${esc(r.who)}</span>` : ''}<span class="price">${r.cost != null ? usd(r.cost) : '$0'}</span></div>${tags}</summary>
       ${full ? `<div class="full">${esc(full)}</div>` : ''}</details>`;
   }).join('') : `<div class="empty">Пока пусто. Каждый запрос — строка здесь и в файле data/${esc(S.state.log_file)}.<br>Секреты — только замаскированные.</div>`;
 }

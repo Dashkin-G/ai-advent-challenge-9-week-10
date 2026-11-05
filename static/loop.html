@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security step</title>
+<link rel="icon" href="data:,">
+<style>
+  /* Тот же «инженерный блокнот», что в днях 46–48. Красное — опасно, зелёное — шлюз скрыл, жёлтое — warning. */
+  :root {
+    --paper: #f4efe6; --card: #fffdf9; --ink: #23264d; --soft: #50557a; --faint: rgba(35, 38, 77, .16);
+    --accent: #e5603b; --mustard: #f2d37a;
+    --err: #b42318; --err-bg: #fbe3dc; --ok: #2f7a45; --ok-bg: #dcefdc; --warn-bg: #fbeebb;
+    --sys: #d9ddf4; --usr: #f9d2bb; --grd: #c9e7cf; --ans: #f6e4a4;
+    --line: 2px solid var(--ink);
+    --display: Bahnschrift, "Segoe UI", sans-serif;
+    --mono: "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column; gap: 12px; padding: 14px 32px 16px;
+    color: var(--ink); font: 18px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    background: var(--paper) radial-gradient(rgba(35, 38, 77, .09) 1.3px, transparent 1.6px) 0 0 / 24px 24px;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:disabled { cursor: default; opacity: .45; }
+  :focus-visible { outline: 3px dashed var(--ink); outline-offset: 3px; }
+  [hidden] { display: none !important; }
+  h2 { margin: 0; font: 700 18px/1.2 var(--display); letter-spacing: .07em; text-transform: uppercase; }
+  .card { border: var(--line); border-radius: 16px; background: var(--card); box-shadow: 4px 4px 0 var(--ink); }
+  .col { display: flex; flex-direction: column; min-height: 0; padding: 14px 18px 16px; }
+  .head { flex: none; display: flex; align-items: center; gap: 10px; }
+  .num { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border: var(--line); border-radius: 50%; background: var(--mustard); font: 700 17px var(--display); }
+  .wait::after { content: "…"; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+
+  header { flex: none; display: flex; align-items: center; gap: 14px; }
+  .logo { width: 44px; height: 40px; flex: none; }
+  h1 { margin: 0; font: 600 34px/1 var(--display); }
+  .chip { padding: 3px 12px; border: 2px solid rgba(35, 38, 77, .3); border-radius: 8px; color: var(--soft); font-size: 16px; white-space: nowrap; }
+  a.chip { border-color: var(--ink); color: var(--ink); font-weight: 600; text-decoration: none; }
+  a.chip:hover { background: var(--card); }
+  .tabs { display: flex; margin-left: auto; border: var(--line); border-radius: 10px; overflow: hidden; }
+  .tabs button { padding: 5px 20px; border: none; background: var(--card); font: 600 19px var(--display); }
+  .tabs button + button { border-left: var(--line); }
+  .tabs button[aria-current="true"] { background: var(--ink); color: var(--card); }
+
+  /* Цикл: ① задача · ② шаги · ③ что внутри шага · снизу — кто что поймал */
+  #view-loop { flex: 1; min-height: 0; display: grid; grid-template-columns: 330px minmax(0, 1fr) minmax(0, 1.2fr); grid-template-rows: minmax(0, 1fr) auto; gap: 16px 20px; }
+  #view-loop > .tasks { grid-row: 1 / 3; }
+  .label { flex: none; margin: 14px 0 6px; color: var(--soft); font: 700 13px var(--display); letter-spacing: .06em; text-transform: uppercase; }
+  .task { width: 100%; display: flex; flex-direction: column; gap: 2px; margin-top: 8px; padding: 9px 12px; border: var(--line); border-radius: 12px; background: var(--card); text-align: left; box-shadow: 2px 2px 0 var(--ink); }
+  .task b { font: 600 19px/1.2 var(--display); }
+  .task span { color: var(--soft); font-size: 14.5px; line-height: 1.3; }
+  .task[aria-pressed="true"] { background: var(--usr); }
+  .seg { flex: none; display: flex; border: var(--line); border-radius: 12px; overflow: hidden; }
+  .seg button { flex: 1; padding: 7px 4px; border: none; background: var(--card); font: 600 16px var(--display); white-space: nowrap; }
+  .seg button + button { border-left: var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--card); }
+  #file { margin-top: 12px; background: var(--paper); }
+  #file .bar { background: var(--usr); font-size: 12.5px; letter-spacing: 0; text-transform: none; }
+  #file .text { padding: 6px 10px; font: 12.5px/1.4 var(--mono); }
+  .main { margin-top: 12px; padding: 11px 16px; border: var(--line); border-radius: 12px; background: var(--ink); color: var(--card); font: 600 21px/1.2 var(--display); box-shadow: 5px 5px 0 var(--accent); }
+  .ghost { flex: none; margin-top: 12px; padding: 7px 11px; border: var(--line); border-radius: 10px; background: var(--card); font: 600 16px var(--display); box-shadow: 2px 2px 0 var(--ink); }
+
+  .track { flex: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 12px; }
+  .station { position: relative; padding: 6px 4px; border: var(--line); border-radius: 10px; background: #fff; text-align: center; font: 600 15px/1.2 var(--display); }
+  .station + .station::before { content: "▶"; position: absolute; left: -15px; top: 50%; transform: translateY(-50%); font-size: 12px; }
+  .station i { display: block; font-style: normal; font-size: 24px; line-height: 1.15; }
+  .station small { display: block; color: var(--soft); font: 12.5px var(--display); }
+  .station.now { background: var(--mustard); }
+  .back { flex: none; margin-top: 4px; padding: 0 2px; color: var(--err); font: 600 13.5px var(--display); text-align: center; }
+  #steps { flex: 1; min-height: 0; overflow-y: auto; margin-top: 8px; padding-right: 4px; scrollbar-width: thin; }
+  .task-head { margin: 8px 0 2px; font: 700 17px var(--display); }
+  .attempt { margin: 6px 0 2px; color: var(--soft); font: 700 12.5px var(--display); letter-spacing: .06em; text-transform: uppercase; }
+  .step { width: 100%; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: start; gap: 6px; margin-top: 3px; padding: 4px 8px; border: 2px solid var(--faint); border-radius: 9px; background: #fff; text-align: left; font-size: 15.5px; line-height: 1.3; }
+  .step[aria-current="true"] { border-color: var(--ink); background: var(--paper); }
+  .step b { font: 600 15.5px var(--display); }
+  .step time { color: var(--soft); font: 12.5px var(--mono); white-space: nowrap; }
+  .note { padding: 4px 8px; color: var(--soft); font-size: 15px; }
+  .stop { margin-top: 4px; padding: 5px 10px; border: 2px solid var(--err); border-radius: 9px; background: var(--err-bg); color: var(--err); font-weight: 600; font-size: 15.5px; }
+  .tag { display: inline-block; margin: 2px 4px 0 0; padding: 0 7px; border: 1.5px solid var(--faint); border-radius: 6px; font-size: 13.5px; line-height: 1.45; }
+  .tag.bad { border-color: var(--err); background: var(--err-bg); color: var(--err); }
+  .tag.safe { border-color: var(--ok); background: var(--ok-bg); color: var(--ok); }
+  .tag.warn { border-color: #a97f12; background: var(--warn-bg); color: #6d5208; }
+  .hint { color: var(--soft); }
+
+  #detail { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .box { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; border: var(--line); border-radius: 12px; background: #fff; overflow: hidden; }
+  .bar { flex: none; padding: 4px 12px; border-bottom: var(--line); font: 700 14px var(--display); letter-spacing: .04em; text-transform: uppercase; }
+  .b-model .bar { background: var(--sys); } .b-raw .bar { background: var(--ans); } .b-ok .bar { background: var(--grd); } .b-bad .bar { background: var(--usr); }
+  .text { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.4; scrollbar-width: thin; }
+  .sys-line { display: block; margin-bottom: 7px; padding-bottom: 7px; border-bottom: 2px dashed var(--faint); color: var(--soft); font-size: 13.5px; line-height: 1.35; }
+  .code { flex: 1; min-height: 0; overflow: auto; padding: 6px 0; font: 14px/1.45 var(--mono); scrollbar-width: thin; }
+  .code div { display: flex; white-space: pre; }
+  .code div.bad { background: var(--err-bg); }
+  .code i { flex: none; width: 34px; padding-right: 8px; color: var(--soft); font-style: normal; text-align: right; user-select: none; }
+  mark.leak { padding: 0 2px; border-radius: 3px; background: var(--err); color: #fff; }
+  mark.safe { padding: 0 3px; border-radius: 3px; background: var(--ok); color: #fff; font: 600 13px var(--mono); }
+  mark.fix { padding: 0 3px; border-radius: 3px; background: var(--mustard); color: inherit; font-weight: 600; }
+  .rule { display: grid; grid-template-columns: 74px minmax(0, 1fr) 96px; gap: 8px; padding: 2px 10px; border-top: 2px solid var(--faint); font-size: 14.5px; line-height: 1.35; }
+  .rule:first-child { border-top: none; }
+  .rule.yes { background: var(--err-bg); font-weight: 600; }
+  .rule.warn { background: var(--warn-bg); font-weight: 600; }
+  .rule em { font: 600 13px var(--display); font-style: normal; color: var(--soft); }
+  .rule u { text-decoration: none; text-align: right; white-space: nowrap; }
+
+  /* Снизу и на вкладке «Итог»: кто что поймал */
+  #score { grid-column: 2 / 4; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .who { min-height: 96px; padding: 7px 14px 9px; border: var(--line); border-radius: 12px; background: var(--card); box-shadow: 3px 3px 0 var(--ink); }
+  .who h3 { margin: 0; font: 700 15px/1.3 var(--display); letter-spacing: .03em; text-transform: uppercase; }
+  .who.gw { background: var(--ok-bg); } .who.rv { background: var(--warn-bg); } .who.gone { background: var(--err-bg); }
+  .who .none { color: var(--soft); font-size: 14px; }
+  .tag.plain { background: #fff; }
+
+  #view-total { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+  .sheet { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 12px 18px; }
+  .sheet table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .sheet th { padding: 6px 10px; font: 700 15.5px var(--display); letter-spacing: .03em; text-align: left; text-transform: uppercase; }
+  .sheet td { padding: 10px; border-top: var(--line); vertical-align: top; font-size: 16px; }
+  .sheet td.name { font: 600 19px/1.25 var(--display); }
+  .sheet td small { display: block; margin-top: 4px; color: var(--soft); font: 14px var(--mono); }
+  .sheet .tag { font-size: 15px; }
+  .commits { margin-top: 14px; padding-top: 10px; border-top: var(--line); color: var(--soft); font-size: 15px; }
+  .commits div { color: var(--ink); font: 15px/1.5 var(--mono); }
+  .total-head { flex: none; display: flex; align-items: center; gap: 14px; }
+  .total-head .ghost { margin: 0; }
+  .lesson { flex: none; margin: 0; padding: 10px 18px; background: var(--mustard); font-size: 17px; line-height: 1.35; }
+</style>
+</head>
+<body>
+<header>
+  <svg class="logo" viewBox="0 0 44 40" aria-hidden="true">
+    <path d="M22 2l15 6v11c0 9-6 15-15 19C13 34 7 28 7 19V8z" fill="#fffdf9" stroke="#23264d" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M15 19l5 5 9-10" fill="none" stroke="#2f7a45" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <h1>Security step</h1>
+  <span class="chip" id="model"></span>
+  <a class="chip" href="/gateway">← День 48: шлюз</a>
+  <nav class="tabs">
+    <button data-view="loop" aria-current="true">Цикл</button>
+    <button data-view="total" aria-current="false">Итог</button>
+  </nav>
+</header>
+
+<main id="view-loop">
+  <section class="card col tasks">
+    <div class="head"><span class="num">1</span><h2>Задача</h2></div>
+    <div id="tasks"></div>
+    <div class="box" id="file"></div>
+    <div class="label">Секрет в запросе к модели</div>
+    <div class="seg" id="mode"></div>
+    <button class="main" id="run">▶ Запустить цикл</button>
+    <button class="ghost" id="run-all">▶▶ Все 3 задачи</button>
+  </section>
+
+  <section class="card col">
+    <div class="head"><span class="num">2</span><h2>Цикл</h2></div>
+    <div class="track" id="track"></div>
+    <div class="back">↩ Упали тесты, Critical или High — обратно с фидбеком · Medium, Low — warning и дальше</div>
+    <div id="steps"></div>
+  </section>
+
+  <section class="card col">
+    <div class="head"><span class="num">3</span><h2 id="detail-title">Шаг</h2></div>
+    <div id="detail"></div>
+  </section>
+
+  <div id="score"></div>
+</main>
+
+<main id="view-total" hidden>
+  <div class="total-head">
+    <h2>3 задачи: кто что поймал</h2>
+    <button class="ghost" id="run-all-2">▶▶ Прогнать все 3</button>
+    <span class="hint" id="total-state"></span>
+  </div>
+  <section class="card sheet" id="sheet"></section>
+  <p class="card lesson"><b>Шлюз</b> видит форму секрета, <b>review</b> — только свой файл и свой чек-лист. Секрет без формы и дыра в другом файле проходят мимо обоих.</p>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const S = {state: null, task: 'token', mode: 'mask', events: [], running: false, picked: null};
+const LEVEL = {Critical: '🔴', High: '🟠', Medium: '🟡', Low: '⚪'};
+const RETURNS = ['Critical', 'High'];
+const STATIONS = [['generate', '🧠', 'Генерация', '🛂 через шлюз'], ['tests', '🧪', 'Линтер, тесты', 'на этой машине'],
+                  ['review', '🔍', 'Security review', '🛂 через шлюз'], ['commit', '📦', 'Коммит', 'git']];
+const TITLES = {generate: 'Генерация', tests: 'Линтер и тесты', review: 'Security review', commit: 'Коммит', audit: 'Контроль'};
+const ICONS = {generate: '🧠', tests: '🧪', review: '🔍', commit: '📦', audit: '🕵️'};
+const NEXT = {start: 'generate', generate: 'tests', tests: 'review', commit: 'audit'};
+
+const tag = (text, cls = '') => `<span class="tag ${cls}">${esc(text)}</span>`;
+const unique = list => [...new Set(list)];
+const names = hits => unique(hits.map(h => h.name)).join(', ');
+
+// Что подсветить в тексте: заглушки шлюза — зелёные, приманки, которых шлюз не узнал, — красные
+function marked(text) {
+  let out = esc(text).replace(/\[REDACTED_\w+\]/g, '<mark class="safe">$&</mark>').replace(/^Исправь:.*$/gm, '<mark class="fix">$&</mark>');
+  for (const value of Object.values(S.state.baits)) out = out.replaceAll(esc(value), `<mark class="leak">${esc(value)}</mark>`);
+  return out;
+}
+
+// Что цикл вернул на генерацию: строки «Исправь: …» в запросе к модели
+const feedback = e => [...e.request.matchAll(/^Исправь: (.*?)(?:\. Как:.*)?\.?$/gm)].map(m => m[1]);
+
+const codeView = (code, lines = []) => '<div class="code">' + code.trimEnd().split('\n').map((line, i) =>
+  `<div class="${lines.includes(i + 1) ? 'bad' : ''}"><i>${i + 1}</i><span>${marked(line) || ' '}</span></div>`).join('') + '</div>';
+
+function setView(view) {
+  for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-current', b.dataset.view === view);
+  for (const id of ['loop', 'total']) $('#view-' + id).hidden = id !== view;
+}
+
+// ① Задача
+function renderControls() {
+  $('#tasks').innerHTML = S.state.tasks.map(t =>
+    `<button class="task" data-task="${t.id}" aria-pressed="${S.task === t.id}"><b>${t.icon} ${esc(t.name)}</b><span>${esc(t.text)}</span></button>`).join('');
+  const task = S.state.tasks.find(t => t.id === S.task);
+  $('#file').innerHTML = `<div class="bar">В промпт идёт файл · ${esc(task.context)}</div><div class="text">${marked(task.file.trim())}</div>`;
+  $('#mode').innerHTML = [['mask', '✂️ Маскировать'], ['block', '🚫 Блокировать']].map(([id, name]) =>
+    `<button data-mode="${id}" aria-pressed="${S.mode === id}">${name}</button>`).join('');
+  for (const id of ['#run', '#run-all', '#run-all-2']) $(id).disabled = S.running;
+  $('#total-state').textContent = S.running ? 'Цикл идёт…' : '';
+}
+
+// ② Цикл: что происходит сейчас и список шагов
+function coming() {
+  const last = S.events[S.events.length - 1];
+  if (!S.running || !last) return null;
+  if (last.step === 'summary') return 'generate';
+  if (last.step === 'tests') return last.ok ? 'review' : 'generate';
+  if (last.step === 'review') {
+    if (last.findings === null) return 'review';
+    return last.findings.some(f => RETURNS.includes(f.level)) ? 'generate' : 'commit';
+  }
+  return NEXT[last.step] || null;
+}
+
+function stepTags(e) {
+  if (e.step === 'generate' || e.step === 'review') {
+    const out = [];
+    if (e.step === 'generate') for (const text of feedback(e)) out.push(tag('↩ ' + text, 'warn'));
+    if (e.status === 400) out.push(tag('🚫 Шлюз заблокировал: ' + names(e.input), 'bad'));
+    else if (e.input.length) out.push(tag('✂️ Шлюз скрыл: ' + names(e.input), 'safe'));
+    if (e.output.length) out.push(tag('🛂 В ответе: ' + names(e.output), 'bad'));
+    if (e.slipped.length) out.push(tag('🕳 Не узнал: ' + e.slipped.join(', '), 'bad'));
+    if (e.step === 'review' && e.findings) {
+      if (!e.findings.length) out.push(tag('✓ Чисто', 'safe'));
+      for (const f of e.findings) out.push(tag(`${LEVEL[f.level]} ${f.level}: ${f.problem}`, RETURNS.includes(f.level) ? 'bad' : 'warn'));
+    }
+    if (e.step === 'review' && !e.findings) out.push(tag('Ответа нет — ещё раз', 'warn'));
+    if (e.step === 'generate' && e.status === 200 && !e.input.length && !e.output.length && !e.slipped.length) out.push(tag('✓ Шлюз: чисто', 'safe'));
+    return out.join('');
+  }
+  if (e.step === 'tests') {
+    if (e.ok) return tag('✓ Прошли', 'safe');
+    const lines = e.details.split('\n').filter(Boolean);
+    return tag('✗ ' + (lines.find(line => line.startsWith('E ')) || lines[0]).replace(/^E\s+/, '').slice(0, 70), 'bad');
+  }
+  if (e.step === 'commit') return tag(e.hash, 'safe') + e.warnings.map(f => tag(`⚠ ${f.level}: ${f.problem}`, 'warn')).join('');
+  if (e.step === 'audit') return e.holes.map(h => tag('🕳 ' + h, 'bad')).join('') + e.warned.map(h => tag('⚠ ' + h, 'warn')).join('')
+    || tag('✓ Дыр нет', 'safe');
+  return '';
+}
+
+const STOPS = {no_fix: () => `За ${S.state.max_tries} попытки не сошлось — коммита нет`, blocked: () => 'В модель ничего не ушло — коммита нет'};
+
+function renderSteps() {
+  const taskOf = id => S.state.tasks.find(t => t.id === id);
+  let html = '', attempt = null;
+  S.events.forEach((e, i) => {
+    if (e.step === 'start') { html += `<div class="task-head">${taskOf(e.task).icon} ${esc(taskOf(e.task).name)}</div>`; attempt = null; return; }
+    if (e.step === 'wait') { html += `<div class="note">⏳ Лимит шлюза: ждём ${e.seconds} с</div>`; return; }
+    if (e.step === 'crash') { html += `<div class="stop">${esc(e.error)}</div>`; return; }
+    if (e.step === 'summary') {
+      if (e.result !== 'commit') html += `<div class="stop">⛔ ${esc(STOPS[e.result] ? STOPS[e.result]() : e.reason)}</div>`;
+      return;
+    }
+    if (e.try !== attempt && e.step !== 'audit' && e.step !== 'commit') { attempt = e.try; html += `<div class="attempt">Попытка ${attempt}</div>`; }
+    const seconds = e.seconds ? `${String(e.seconds).replace('.', ',')} с` : '';
+    html += `<button class="step" data-pick="${i}" aria-current="${shown() === i}"><span>${ICONS[e.step]}</span><span><b>${TITLES[e.step]}</b><br>${stepTags(e)}</span><time>${seconds}</time></button>`;
+  });
+  const next = coming();
+  if (next) html += `<div class="note wait">${ICONS[next]} ${TITLES[next]}</div>`;
+  if (!S.events.length) html = '<div class="note">Выберите задачу и запустите цикл.</div>';
+  const box = $('#steps');
+  const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  box.innerHTML = html;
+  if (atEnd || S.picked === null) box.scrollTop = box.scrollHeight;
+  const now = next || null;
+  $('#track').innerHTML = STATIONS.map(([id, icon, name, note]) =>
+    `<div class="station ${now === id ? 'now' : ''}"><i>${icon}</i>${name}<small>${note}</small></div>`).join('');
+}
+
+// Какой шаг показать справа: выбранный или последний
+function shown() {
+  if (S.picked !== null) return S.picked;
+  for (let i = S.events.length - 1; i >= 0; i--) if (TITLES[S.events[i].step]) return i;
+  return null;
+}
+
+// ③ Что внутри шага
+function sentBox(e) {
+  if (!e.sent.length) return `<div class="box b-bad"><div class="bar">Шлюз не пустил</div><div class="text">${marked(e.request || '')}\n\n<b>В модель ничего не ушло.</b></div></div>`;
+  const system = e.sent.filter(m => m.role === 'system').map(m => m.content).join('\n');
+  const user = e.sent.filter(m => m.role !== 'system').map(m => m.content).join('\n');
+  return `<div class="box b-model"><div class="bar">Модель получила — после шлюза</div><div class="text"><span class="sys-line">${esc(system)}</span>${marked(user)}</div></div>`;
+}
+
+function checklist(e) {
+  return e.checklist.map(r => {
+    const yes = r.answer === 'да', cls = yes ? (RETURNS.includes(r.level) ? 'yes' : 'warn') : '';
+    const answer = yes ? 'да' + (r.line ? ', стр. ' + r.line : '') : r.answer || '—';
+    return `<div class="rule ${cls}"><em>${LEVEL[r.level]} ${r.level}</em><span>${esc(r.ask)}</span><u>${answer}</u></div>`;
+  }).join('');
+}
+
+function renderDetail() {
+  const i = shown(), e = i === null ? null : S.events[i];
+  $('#detail-title').textContent = e ? TITLES[e.step] : 'Шаг';
+  if (!e) { $('#detail').innerHTML = '<div class="note">Здесь — что получила модель и что ответила.</div>'; return; }
+  let html = '';
+  if (e.step === 'generate') {
+    html = sentBox(e);
+    if (e.status === 200) html += `<div class="box b-raw"><div class="bar">Модель написала</div>${codeView(e.code)}</div>`;
+  } else if (e.step === 'tests') {
+    html = `<div class="box ${e.ok ? 'b-ok' : 'b-bad'}"><div class="bar">${e.ok ? 'Прошли' : 'Упали — это уйдёт в фидбек'}</div><div class="text">${esc(e.details)}</div></div>`;
+  } else if (e.step === 'review') {
+    if (e.findings) html = `<div class="box b-model" style="flex:none"><div class="bar">Чек-лист: уровень ставит код, ответ — модель</div><div>${checklist(e)}</div></div>`;
+    else html = `<div class="box b-bad"><div class="bar">Ответ не принят: проверки не было</div><div class="text">${esc(e.raw || e.error || '')}</div></div>`;
+    html += `<div class="box b-raw"><div class="bar">Проверяемый код</div>${codeView(e.code, (e.findings || []).map(f => f.line))}</div>`;
+  } else if (e.step === 'commit') {
+    html = `<div class="box b-ok"><div class="bar">Коммит ${esc(e.hash)}</div>${codeView(e.code)}</div>`;
+  } else if (e.step === 'audit') {
+    const lines = [...e.holes.map(h => `🕳 ${esc(h)} — мимо обоих`), ...e.warned.map(h => `⚠ ${esc(h)} — review предупредил, коммит с warning`)];
+    html = `<div class="box ${e.holes.length ? 'b-bad' : 'b-ok'}"><div class="bar">Контроль: ${e.ran} проверок, цикл их не видит</div><div class="text">${lines.join('\n') || 'Дыр нет.'}</div></div>`;
+  }
+  $('#detail').innerHTML = html;
+}
+
+// Кто что поймал: одно и то же внизу страницы и на вкладке «Итог»
+function columns(s) {
+  const gateway = s.gateway.map(h => tag(h.name + (h.preview ? ' · ' + h.preview : ''), 'safe plain'));
+  const review = s.review.map(f => tag(`${LEVEL[f.level]} ${f.problem}`, RETURNS.includes(f.level) ? 'bad plain' : 'warn plain'));
+  const gone = [...s.slipped.map(name => tag('в модель: ' + name, 'bad plain')), ...(s.holes || []).map(h => tag('в коммите: ' + h, 'bad plain'))];
+  return {gateway, review, gone};
+}
+
+const nothing = (s, key) => ({gateway: 'пропустил чистым', review: s.reviewed ? 'сказал: чисто' : 'до него не дошло', gone: 'ничего'})[key];
+
+function renderScore() {
+  const s = S.running ? null : S.state.summaries[S.task];
+  const c = s ? columns(s) : {gateway: [], review: [], gone: []};
+  const box = (cls, key, title) => `<div class="who ${cls}"><h3>${title}</h3>${c[key].join('') || `<span class="none">${s ? nothing(s, key) : '…'}</span>`}</div>`;
+  $('#score').innerHTML = box('gw', 'gateway', '🛂 Шлюз поймал') + box('rv', 'review', '🔍 Review поймал') + box('gone', 'gone', '🕳 Мимо обоих');
+}
+
+function renderTotal() {
+  const rows = S.state.tasks.map(t => {
+    const s = S.state.summaries[t.id];
+    if (!s) return `<tr><td class="name">${t.icon} ${esc(t.name)}</td><td colspan="4" class="hint">Ещё не запускали</td></tr>`;
+    const c = columns(s), cell = key => c[key].join('') || `<span class="hint">${nothing(s, key)}</span>`;
+    const result = s.result === 'commit' ? `📦 Коммит <b>${esc(s.hash)}</b>` : '⛔ Коммита нет';
+    return `<tr><td class="name">${t.icon} ${esc(t.name)}<small>попыток: ${s.tries}</small></td><td>${cell('gateway')}</td><td>${cell('review')}</td><td>${cell('gone')}</td><td>${result}</td></tr>`;
+  }).join('');
+  const commits = S.state.commits.map(line => `<div>${esc(line)}</div>`).join('');
+  $('#sheet').innerHTML = `<table><colgroup><col style="width:17%"><col style="width:24%"><col style="width:24%"><col style="width:24%"><col style="width:11%"></colgroup>
+    <tr><th>Задача</th><th>🛂 Шлюз поймал</th><th>🔍 Review поймал</th><th>🕳 Мимо обоих</th><th>Итог</th></tr>${rows}</table>
+    ${commits ? `<div class="commits"><b>git log</b> — копия проекта, настоящий репозиторий цикл не трогает${commits}</div>` : ''}`;
+}
+
+function render() { renderControls(); renderSteps(); renderDetail(); renderScore(); renderTotal(); }
+
+async function refresh() {
+  const data = await (await fetch('/api/loop/events')).json();
+  const finished = S.running && !data.running;
+  const changed = finished || data.events.length !== S.events.length || !S.painted;  // иначе клик по шагу попадёт в момент перерисовки
+  S.events = data.events; S.running = data.running; S.painted = true;
+  const current = S.events.filter(e => e.task).pop();
+  if (current && S.picked === null) S.task = current.task;  // слева и снизу — задача, которая идёт сейчас
+  if (finished) S.state = await (await fetch('/api/loop/state')).json();
+  if (changed) render();
+  if (S.running) setTimeout(refresh, 700);
+}
+
+async function start(task) {
+  S.picked = null;
+  const r = await fetch('/api/loop/run', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task, mode: S.mode})});
+  if (r.ok) { S.running = true; S.events = []; render(); setTimeout(refresh, 300); }
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('button');
+  if (!t) return;
+  if (t.dataset.view) setView(t.dataset.view);
+  else if (t.dataset.task) { S.task = t.dataset.task; render(); }
+  else if (t.dataset.mode) { S.mode = t.dataset.mode; renderControls(); }
+  else if (t.dataset.pick) { S.picked = +t.dataset.pick; S.task = S.events[S.picked].task; render(); }
+  else if (t.id === 'run') start(S.task);
+  else if (t.id === 'run-all' || t.id === 'run-all-2') start('all');
+});
+
+(async () => {
+  S.state = await (await fetch('/api/loop/state')).json();
+  $('#model').textContent = `мозг — ${S.state.model} на этом компьютере`;
+  await refresh();
+})();
+</script>
+</body>
+</html>
