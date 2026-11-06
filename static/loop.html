@@ -61,6 +61,7 @@
   #file { margin-top: 12px; background: var(--paper); }
   #file .bar { background: var(--usr); font-size: 12.5px; letter-spacing: 0; text-transform: none; }
   #file .text { padding: 6px 10px; font: 12.5px/1.4 var(--mono); }
+  textarea { flex: none; width: 100%; padding: 5px 9px; border: var(--line); border-radius: 10px; background: #fff; color: var(--ink); font: 13px/1.35 var(--mono); resize: none; }
   .main { margin-top: 12px; padding: 11px 16px; border: var(--line); border-radius: 12px; background: var(--ink); color: var(--card); font: 600 21px/1.2 var(--display); box-shadow: 5px 5px 0 var(--accent); }
   .ghost { flex: none; margin-top: 12px; padding: 7px 11px; border: var(--line); border-radius: 10px; background: var(--card); font: 600 16px var(--display); box-shadow: 2px 2px 0 var(--ink); }
 
@@ -149,10 +150,15 @@
     <div class="head"><span class="num">1</span><h2>Задача</h2></div>
     <div id="tasks"></div>
     <div class="box" id="file"></div>
+    <div class="label">Свой текст к задаче</div>
+    <textarea id="note" rows="2" maxlength="5000"></textarea>
     <div class="label">Секрет в запросе к модели</div>
     <div class="seg" id="mode"></div>
     <button class="main" id="run">▶ Запустить цикл</button>
     <button class="ghost" id="run-all">▶▶ Все 3 задачи</button>
+    <div class="label">Готовый код — только review</div>
+    <textarea id="code" rows="2" maxlength="5000" spellcheck="false"></textarea>
+    <button class="ghost" id="review-only">🔍 Проверить код</button>
   </section>
 
   <section class="card col">
@@ -183,7 +189,7 @@
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
-const S = {state: null, task: 'token', mode: 'mask', events: [], running: false, picked: null};
+const S = {state: null, task: 'token', mode: 'mask', events: [], running: false, picked: null, direct: false};
 const LEVEL = {Critical: '🔴', High: '🟠', Medium: '🟡', Low: '⚪'};
 const RETURNS = ['Critical', 'High'];
 const STATIONS = [['generate', '🧠', 'Генерация', '🛂 через шлюз'], ['tests', '🧪', 'Линтер, тесты', 'на этой машине'],
@@ -222,13 +228,14 @@ function renderControls() {
   $('#file').innerHTML = `<div class="bar">В промпт идёт файл · ${esc(task.context)}</div><div class="text">${marked(task.file.trim())}</div>`;
   $('#mode').innerHTML = [['mask', '✂️ Маскировать'], ['block', '🚫 Блокировать']].map(([id, name]) =>
     `<button data-mode="${id}" aria-pressed="${S.mode === id}">${name}</button>`).join('');
-  for (const id of ['#run', '#run-all', '#run-all-2']) $(id).disabled = S.running;
+  for (const id of ['#run', '#run-all', '#run-all-2', '#review-only']) $(id).disabled = S.running;
   $('#total-state').textContent = S.running ? 'Цикл идёт…' : '';
 }
 
 // ② Цикл: что происходит сейчас и список шагов
 function coming() {
   const last = S.events[S.events.length - 1];
+  if (S.direct && S.running) return 'review';
   if (!S.running || !last) return null;
   if (last.step === 'summary') return 'generate';
   if (last.step === 'tests') return last.ok ? 'review' : 'generate';
@@ -285,7 +292,7 @@ function renderSteps() {
   });
   const next = coming();
   if (next) html += `<div class="note wait">${ICONS[next]} ${TITLES[next]}</div>`;
-  if (!S.events.length) html = '<div class="note">Выберите задачу и запустите цикл.</div>';
+  if (!S.events.length && !next) html = '<div class="note">Выберите задачу и запустите цикл.</div>';
   const box = $('#steps');
   const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
   box.innerHTML = html;
@@ -352,6 +359,7 @@ function columns(s) {
 const nothing = (s, key) => ({gateway: 'пропустил чистым', review: s.reviewed ? 'сказал: чисто' : 'до него не дошло', gone: 'ничего'})[key];
 
 function renderScore() {
+  $('#score').hidden = S.direct;  // только review: цикла не было, итога по задаче тоже
   const s = S.running ? null : S.state.summaries[S.task];
   const c = s ? columns(s) : {gateway: [], review: [], gone: []};
   const box = (cls, key, title) => `<div class="who ${cls}"><h3>${title}</h3>${c[key].join('') || `<span class="none">${s ? nothing(s, key) : '…'}</span>`}</div>`;
@@ -388,8 +396,19 @@ async function refresh() {
 
 async function start(task) {
   S.picked = null;
-  const r = await fetch('/api/loop/run', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task, mode: S.mode})});
-  if (r.ok) { S.running = true; S.events = []; render(); setTimeout(refresh, 300); }
+  const r = await fetch('/api/loop/run', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task, mode: S.mode, note: $('#note').value.trim()})});
+  if (r.ok) { S.running = true; S.direct = false; S.events = []; render(); setTimeout(refresh, 300); }
+}
+
+async function reviewOnly() {
+  const code = $('#code').value;
+  if (!code.trim()) return;
+  Object.assign(S, {picked: null, running: true, direct: true, events: []});
+  render();
+  const r = await fetch('/api/loop/review', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({code, mode: S.mode})});
+  S.events = [r.ok ? {...await r.json(), task: S.task} : {step: 'crash', error: `Review не запустился: ${r.status}`}];
+  S.running = false;
+  render();
 }
 
 document.addEventListener('click', e => {
@@ -401,6 +420,7 @@ document.addEventListener('click', e => {
   else if (t.dataset.pick) { S.picked = +t.dataset.pick; S.task = S.events[S.picked].task; render(); }
   else if (t.id === 'run') start(S.task);
   else if (t.id === 'run-all' || t.id === 'run-all-2') start('all');
+  else if (t.id === 'review-only') reviewOnly();
 });
 
 (async () => {

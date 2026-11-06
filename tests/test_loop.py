@@ -395,3 +395,32 @@ def test_api_runs_task_in_background_and_refuses_second_run(world):
     state = client.get("/api/loop/state").json()
     assert state["summaries"]["log"]["result"] == "commit"
     assert state["commits"][0].endswith(LOG_TASK["text"])
+
+
+def test_note_goes_to_model_with_task_through_gateway(world):
+    world.replies = [fenced(SAFE_LOG), checklist_answer(SAFE_LOG)]
+    client = TestClient(app)
+    note = "Свой текст к задаче, ключ sk-test-123456"
+    assert client.post("/api/loop/run", json={"task": "log", "note": note}).status_code == 200
+    while client.get("/api/loop/events").json()["running"]:
+        loop.time.sleep(0.1)
+    request = world.sent[0][1]["content"]
+    assert "Свой текст к задаче, ключ [REDACTED_API_KEY]" in request and "sk-test-123456" not in request
+    assert "Свой текст" not in LOG_TASK["spec"]
+
+
+def test_review_only_does_not_run_or_commit_code(world, monkeypatch):
+    monkeypatch.setattr(loop, "_run", lambda *args: pytest.fail("код запустили"))
+    world.replies = [checklist_answer(HTTP_API, problems=["запрос по http"])]
+    step = TestClient(app).post("/api/loop/review", json={"code": HTTP_API}).json()
+    assert step["findings"][0]["problem"] == "запрос по http"
+    assert HTTP_API.splitlines()[0] in world.sent[0][1]["content"]
+
+
+def test_review_only_without_answer_is_not_clean(world):
+    step = TestClient(app).post("/api/loop/review", json={"code": "x = 1\n"}).json()
+    assert step["status"] == 502 and step["findings"] is None
+
+
+def test_review_only_needs_code(world):
+    assert TestClient(app).post("/api/loop/review", json={"code": ""}).status_code == 422

@@ -15,7 +15,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import gateway, guards
 from app.llm import MODEL
@@ -296,6 +296,12 @@ def _worker(tasks, mode):
 class Run(BaseModel):
     task: str = "all"
     mode: Literal["block", "mask"] = "mask"
+    note: str = Field("", max_length=5_000)  # свой текст к задаче: идёт в модель вместе с ней, через шлюз
+
+
+class Code(BaseModel):
+    code: str = Field(min_length=1, max_length=5_000)
+    mode: Literal["block", "mask"] = "mask"
 
 
 @router.post("/api/loop/run")
@@ -305,10 +311,20 @@ def start(req: Run):
         raise HTTPException(400, "Нет такой задачи")
     if _running.is_set():
         raise HTTPException(409, "Цикл уже идёт")
+    if req.note:
+        tasks = [t | {"spec": f"{t['spec']}\n{req.note}"} for t in tasks]
     _running.set()
     _events.clear()
     threading.Thread(target=_worker, args=(tasks, req.mode), daemon=True).start()
     return {"running": True}
+
+
+@router.post("/api/loop/review")
+def review_only(req: Code):
+    """Готовый код сразу на review: он не запускается и в коммит не идёт. findings: None — проверки не было."""
+    *_, step = review(req.code, req.mode, 1)
+    _log("review_only", step)
+    return step
 
 
 @router.get("/api/loop/events")
